@@ -1,0 +1,511 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "certificate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e2be355f-db01-4b02-9cc7-fb31a4907cbc",
+      "name": "Webhook - Certificate",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "position": [
+        -608,
+        10032
+      ],
+      "webhookId": "certificate-generator"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "single",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bb7d2f05-1400-49ad-8da6-7d28f206b0c3",
+      "name": "Is Single Mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -160,
+        10032
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Loop over input items and add a new field called 'myNewField' to the JSON of each one\nfor (const item of $input.all()) {\n  item.json.myNewField = 1;\n}\n\nreturn $input.all();"
+      },
+      "id": "0f94774c-8a19-451a-89e3-0c434a52505b",
+      "name": "Prepare Single",
+      "type": "n8n-nodes-base.code",
+      " typeVersion": 2,
+      "position": [
+        64,
+        9936
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "// Parse bulk recipients from Excel or Google Sheets\nconst req = $json;\nconst recipients = [];\n\nif (req.source === 'excel' && req.excelFile) {\n  // Parse Excel base64\n  const XLSX = require('xlsx');\n  const buffer = Buffer.from(req.excelFile.split(',')[1] || req.excelFile, 'base64');\n  const workbook = XLSX.read(buffer);\n  const sheet = workbook.Sheets[workbook.SheetNames[0]];\n  const data = XLSX.utils.sheet_to_json(sheet);\n  \n  // Map fields\n  const mapping = req.fieldMapping;\n  data.forEach(row => {\n    recipients.push({\n      name: row[mapping.name] || row.Name || '',\n      badge: row[mapping.badge] || row.Badge || '',\n      date: row[mapping.date] || row.Date || new Date().toISOString().split('T')[0],\n      description: row[mapping.description] || row.Description || '',\n      email: row[mapping.email] || row.Email || '',\n      whatsapp: row[mapping.whatsapp] || row.WhatsApp || ''\n    });\n  });\n} else if (req.source === 'googlesheets' && req.sheetsUrl) {\n  // This will be handled by a separate Google Sheets node\n  return { json: { needsSheetsFetch: true, ...req } };\n}\n\nreturn recipients.map(r => ({\n  json: {\n    ...r,\n    channels: req.delivery.channels,\n    templateType: req.templateType,\n    template: req.template,\n    branding: req.branding,\n    sender: req.sender\n  }\n}));"
+      },
+      "id": "84566fe4-fe0e-4938-a19b-8e8f66646a07",
+      "name": "Prepare Bulk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        64,
+        10128
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "conditions": [
+            {
+              "leftValue": "={{ $json.templateType }}",
+              "rightValue": "ai",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2e76df66-15c9-4bf7-9e49-b1b79990196c",
+      "name": "Is AI Template?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        512,
+        9792
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "image",
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-flash-image-preview",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-flash-image-preview (Nano Banana)"
+        },
+        "prompt": "=Create a professional certificate in HTML/CSS.\\n\\nRecipient: {{ $json.data.name }}\\nAward:{{ $json.data.badge }} \\nDate: {{ $json.data.date }}\\nDescription: {{ $json.data.description }}\\nIssuer: {{ $json.data.issuer }}\\n\\nColors: {{ $json.branding?.colors?.join(', ') || '#0ea5e9, #d946ef' }}\\n\\nSize: 1200×800px, modern elegant design with borders and patterns. ",
+        "options": {}
+      },
+      "id": "23496853-1b70-4148-9de7-39993c3a4633",
+      "name": "Generate AI Certificate HTML",
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        736,
+        9696
+      ],
+      "credentials": {
+        "googlePalmApi": {
+          "id": "XWFcf7pRBJXy0mj0",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process custom template\nconst data = $json;\nconst template = data.template;\n\n if (!template || !template.base64) {\n  throw new Error('Custom template missing');\n}\n\nconst html = `<!DOCTYPE html>\n<html>\n<head>\n  <style>\n    * { margin: 0; padding: 0; box-sizing: border-box; }\n    body {\n      width: 1200px;\n      height: 800px;\n      position: relative;\n      background-image: url('${template.base64}');\n      background-size: cover;\n      background-position: center;\n      font-family: Georgia, serif;\n    }\n    .field {\n      position: absolute;\n      font-weight: bold;\n      text-align: center;\n      color: #1a1a1a;\n    }\n    .name {\n      left: ${template.placeholders.name?.x || 500}px;\n      top: ${template.placeholders.name?.y || 300}px;\n      font-size: ${template.placeholders.name?.fontSize || 48}px;\n    }\n    .badge {\n      left: ${template.placeholders.badge?.x || 500}px;\n      top: ${template.placeholders.badge?.y || 400}px;\n      font-size: ${template.placeholders.badge?.fontSize || 32}px;\n    }\n    .date {\n      left: ${template.placeholders.date?.x || 500}px;\n      top: ${template.placeholders.date?.y || 500}px;\n      font-size: ${template.placeholders.date?.fontSize || 24}px;\n    }\n    .description {\n      left: ${template.placeholders.description?.x || 500}px;\n      top: ${template.placeholders.description?.y || 550}px;\n      font-size: ${template.placeholders.description?.fontSize || 20}px;\n      max-width: 600px;\n    }\n  </style>\n</head>\n<body>\n  <div class=\"field name\">${data.name}</div>\n  <div class=\"field badge\">${data.badge}</div>\n  <div class=\"field date\">${data.date}</div>\n  <div class=\"field description\">${data.description}</div>\n</body>\n</html>`;\n\nreturn { json: { ...data, html } };"
+      },
+      "id": "2a796b83-c3f2-4dc3-8927-a469028377ef",
+      "name": "Build Custom Template",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        9888
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Process Gemini Image Binary\n// The image is already generated, we just need to extract and format it\n\nconst binaryData = $input.item.binary?.data;\n\nif (!binaryData || !binaryData.data) {\n  throw new Error(\"No image binary data found from Gemini\");\n}\n\n// Get the base64 image data\nconst base64Image = binaryData.data;\nconst mimeType = binaryData.mimeType || 'image/png';\n\n// Create unique certificate ID\nconst certificateId = `CERT-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;\n\n// Create data URL for frontend preview\nconst dataUrl = `data:${mimeType};base64,${base64Image}`;\n\nreturn {\n  json: {\n    ...$input.item.json,\n    certificateId: certificateId,\n    imageBase64: base64Image,  // For WhatsApp\n    dataUrl: dataUrl,           // For frontend preview\n    mimeType: mimeType,\n    fileName: `${($input.item.json.name || 'certificate').replace(/\\s+/g, '_')}_certificate.png`\n  },\n  binary: {\n    data: binaryData  // Keep original binary for Gmail attachment\n  }\n};"
+      },
+      "id": "b28e7658-a289-4930-972b-0399c2b6451d",
+      "name": "Convert to Image",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1088,
+        9792
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Webhook - Certificate').item.json.body.delivery.channels[0] }}",
+              "rightValue": "gmail",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "45a5f672-bda2-4ca2-942e-bcbe7b1fd408"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c383dcb1-01be-47ad-bcaa-70b7470eab8c",
+      "name": "Send via Gmail?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1312,
+        9792
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Webhook - Certificate').item.json.body.delivery.channels[1] }}",
+              "rightValue": "whatsapp",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              },
+              "id": "f44b061f-0597-4b86-b231-2b0085232377"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4c3da095-7d30-4d4b-87fc-bcafe25d7b4a",
+      "name": "Send via WhatsApp?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1760,
+        9904
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract and validate request\nconst request = $input.item.json.body;\n\n// Validate mode\nif (!request.mode || !['single', 'bulk'].includes(request.mode)) {\n  throw new Error('Invalid mode. Must be \"single\" or \"bulk\"');\n}\n\n// Validate template type\nif (!request.templateType || !['ai', 'custom'].includes(request.templateType)) {\n  throw new Error('Invalid templateType. Must be \"ai\" or \"custom\"');\n}\n\nreturn { json: request };"
+      },
+      "id": "36f0ea63-5dd4-40a5-ae24-fbe04befc2ec",
+      "name": "Validate Request1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        10032
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "c1c6b34f-07d0-44ad-b468-1010036744d7",
+      "name": "Loop Recipients5",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        288,
+        10032
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Webhook - Certificate').item.json.body.delivery.email }}",
+        "subject": "=Your Certificate -  {{ $('Webhook - Certificate').item.json.body.data.badge }}",
+        "message": "=<p>Dear {{ $('Webhook - Certificate').item.json.body.data.name }},</p>\n<p>Congratulations! Please find your certificate for <strong>{{ $('Webhook - Certificate').item.json.body.data.badge }}</strong> attached.</p>\n<p>Date: {{ $('Webhook - Certificate').item.json.body.data.date }}</p>\n<p>Best regards,<br>{{ $('Webhook - Certificate').item.json.body.data.issuer }}</p>",
+        "options": {
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {}
+            ]
+          }
+        }
+      },
+      "id": "8fb16117-2847-4f91-80c0-77ed7f571bad",
+      "name": "Send Email6",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1536,
+        9712
+      ],
+      "webhookId": "b2c1e474-cff1-402c-847a-c23fc4d276d5",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "MD7ASiBSm3SCExqU",
+          "name": "riyaz.livechat Gmail"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: true,\n  certificateId: $json.certificateId,\n  preview: `data:image/png;base64,${$json.imageBase64}`,\n  deliveryStatus: {\n    gmail: $json.channels.includes('gmail') ? 'sent' : undefined,\n    whatsapp: $json.channels.includes('whatsapp') ? 'sent' : undefined\n  }\n} }}",
+        "options": {}
+      },
+      "id": "b25bb03f-fc00-485e-805d-1a972bfe626d",
+      "name": "Success Response1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        9984
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "messages-api",
+        "operation": "send-image",
+        "instanceName": "whatsapp",
+        "remoteJid": "22",
+        "media": "gj",
+        "caption": "This is the certificate generated for you",
+        "options_message": {}
+      },
+      "type": "n8n-nodes-evolution-api-english.evolutionApi",
+      "typeVersion": 1,
+      "position": [
+        2080,
+        10080
+      ],
+      "id": "90a9f399-6a93-4b32-bb5d-addeb15c3732",
+      "name": "Send image",
+      "credentials": {
+        "evolutionApi": {
+          "id": "aiwPqKgufVBnbjVi",
+          "name": "Evolution account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook - Certificate": {
+      "main": [
+        [
+          {
+            "node": "Validate Request1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Single Mode?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Single",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Bulk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Single": {
+      "main": [
+        [
+          {
+            "node": "Loop Recipients5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Bulk": {
+      "main": [
+        [
+          {
+            "node": "Loop Recipients5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is AI Template?": {
+      "main": [
+        [
+          {
+            "node": "Generate AI Certificate HTML",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Custom Template",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate AI Certificate HTML": {
+      "main": [
+        [
+          {
+            "node": "Convert to Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Custom Template": {
+      "main": [
+        [
+          {
+            "node": "Convert to Image",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Convert to Image": {
+      "main": [
+        [
+          {
+            "node": "Send via Gmail?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via Gmail?": {
+      "main": [
+        [
+          {
+            "node": "Send Email6",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send via WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send via WhatsApp?": {
+      "main": [
+        [
+          {
+            "node": "Send image",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Loop Recipients5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Request1": {
+      "main": [
+        [
+          {
+            "node": "Is Single Mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Recipients5": {
+      "main": [
+        [
+          {
+            "node": "Success Response1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is AI Template?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Email6": {
+      "main": [
+        [
+          {
+            "node": "Send via WhatsApp?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send image": {
+      "main": [
+        [
+          {
+            "node": "Loop Recipients5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "321cedf60d4c598b428d3e59326887b97112a12c3b89933ba6d55156c284c6c9"
+  }
+}
