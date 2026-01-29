@@ -1,14 +1,17 @@
 // Certificate data types
 export interface CertificateData {
-    name: string;
-    badge: string;
-    date: string;
-    description: string;
-    issuer?: string;
+    certificateTitle?: string;  // e.g., "Certificate of Completion"
+    name: string;                // Recipient name
+    awardPurpose?: string;       // e.g., "For successfully completing..."
+    programName?: string;        // Program/Course/Event name
+    issuer?: string;             // Issuing organization
+    date: string;                // Date of issue
+    badge?: string;              // Legacy field (kept for backwards compatibility)
+    description?: string;        // Legacy field (kept for backwards compatibility)
 }
 
 // Template types
-export type TemplateType = 'custom' | 'ai';
+export type TemplateType = 'ai' | 'googleslides';
 
 export interface PlaceholderPosition {
     x: number;
@@ -21,6 +24,18 @@ export interface PlaceholderPosition {
 export interface CustomTemplate {
     base64: string;
     placeholders: Record<string, PlaceholderPosition>;
+}
+
+export interface GoogleSlidesTemplate {
+    url: string;
+    embedUrl: string;
+    imageUrl?: string;
+    imageWidth?: number;
+    imageHeight?: number;
+    positionX?: number;
+    positionY?: number;
+    slideId?: string;
+    placeholderMapping?: Record<string, string>; // Maps slide placeholder name -> column name
 }
 
 export interface AIBranding {
@@ -54,6 +69,7 @@ export interface SingleCertificateRequest {
     mode: 'single';
     templateType: TemplateType;
     template?: CustomTemplate;
+    googleSlidesTemplate?: GoogleSlidesTemplate;
     data: CertificateData;
     branding?: AIBranding;
     delivery: DeliveryInfo;
@@ -65,6 +81,7 @@ export interface BulkCertificateRequest {
     source: BulkSource;
     templateType: TemplateType;
     template?: CustomTemplate;
+    googleSlidesTemplate?: GoogleSlidesTemplate;
     excelFile?: string; // base64
     sheetsUrl?: string;
     sheetName?: string;
@@ -128,6 +145,15 @@ export interface CertificateFormData {
 
     // Custom template
     templateFile?: File;
+
+    // Google Slides template
+    googleSlidesUrl?: string;
+    googleSlidesEmbedUrl?: string;
+    googleSlidesImageUrl?: string;
+    googleSlidesImageWidth?: number;
+    googleSlidesImageHeight?: number;
+    googleSlidesPositionX?: number;
+    googleSlidesPositionY?: number;
 
     // AI branding
     brandColors?: string;

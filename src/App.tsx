@@ -1,25 +1,45 @@
-import CertificateForm from './components/CertificateForm'
-import './index.css'
+import { useState } from 'react';
+import Navbar from './components/Navbar';
+import CertificateForm from './components/CertificateForm';
+import CertificateHistory from './components/CertificateHistory';
+import Settings from './components/Settings';
+
+type Tab = 'generate' | 'history' | 'settings';
 
 function App() {
+  const [currentTab, setCurrentTab] = useState<Tab>('generate');
+
+  const renderContent = () => {
+    switch (currentTab) {
+      case 'generate':
+        return <CertificateForm />;
+      case 'history':
+        return <CertificateHistory />;
+      case 'settings':
+        return <Settings />;
+      default:
+        return <CertificateForm />;
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 relative overflow-hidden">
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-primary-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
-        <div className="absolute top-40 right-10 w-72 h-72 bg-accent-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
-        <div className="absolute -bottom-8 left-20 w-72 h-72 bg-pink-200 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
-      </div>
+    <div className="min-h-screen bg-gray-50">
+      <Navbar currentTab={currentTab} onTabChange={setCurrentTab} />
 
-      {/* Decorative grid pattern */}
-      <div className="absolute inset-0 bg-grid-pattern opacity-[0.02] pointer-events-none"></div>
+      <main className="py-8">
+        {renderContent()}
+      </main>
 
-      {/* Main content */}
-      <div className="relative z-10 container mx-auto py-12 px-4">
-        <CertificateForm />
-      </div>
+      {/* Footer */}
+      <footer className="bg-white border-t border-gray-200 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="text-center text-sm text-gray-500">
+            <p>Certificate Generator · Powered by n8n & Gemini 2.0</p>
+          </div>
+        </div>
+      </footer>
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

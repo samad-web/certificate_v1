@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { FileUp, Sparkles, Mail, MessageCircle, Send, Loader2, Check, Zap, Award } from 'lucide-react';
+import { Mail, MessageCircle, Zap, Award, Loader2, Send } from 'lucide-react';
 import type { CertificateFormData, SingleCertificateRequest, DeliveryChannel } from '../types/certificate';
 import webhookService from '../services/webhookService';
-import config from '../config/config';
+import { certificateStorage } from '../services/certificateStorage';
 import BulkUpload from './BulkUpload';
 import CertificatePreview from './CertificatePreview';
-import FileUpload from './FileUpload';
+import GoogleSlidesEditor from './GoogleSlidesEditor';
 
 const CertificateForm: React.FC = () => {
     const { register, handleSubmit, watch, setValue, formState: { errors } } = useForm<CertificateFormData>({
@@ -26,7 +26,6 @@ const CertificateForm: React.FC = () => {
     const mode = watch('mode');
     const templateType = watch('templateType');
     const deliveryChannels = watch('deliveryChannels');
-    const templateFile = watch('templateFile');
 
     const toggleDeliveryChannel = (channel: DeliveryChannel) => {
         const current = deliveryChannels || [];
@@ -77,31 +76,6 @@ const CertificateForm: React.FC = () => {
                 },
             };
 
-            // Handle custom template
-            if (data.templateType === 'custom' && data.templateFile) {
-                const validation = webhookService.validateFile(
-                    data.templateFile,
-                    config.supportedImageFormats,
-                    config.maxFileSize
-                );
-
-                if (!validation.valid) {
-                    setResult({ success: false, message: validation.error || 'Invalid file' });
-                    setIsSubmitting(false);
-                    return;
-                }
-
-                const base64 = await webhookService.fileToBase64(data.templateFile);
-                request.template = {
-                    base64,
-                    placeholders: {
-                        name: { x: 500, y: 300 },
-                        badge: { x: 500, y: 400 },
-                        date: { x: 500, y: 500 },
-                        description: { x: 500, y: 550 },
-                    },
-                };
-            }
 
             // Handle AI branding
             if (data.templateType === 'ai') {
@@ -115,14 +89,45 @@ const CertificateForm: React.FC = () => {
                 }
             }
 
+            // Handle Google Slides template
+            if (data.templateType === 'googleslides') {
+                if (!data.googleSlidesUrl || !data.googleSlidesEmbedUrl) {
+                    setResult({ success: false, message: 'Please provide a valid Google Slides URL' });
+                    setIsSubmitting(false);
+                    return;
+                }
+
+                request.googleSlidesTemplate = {
+                    url: data.googleSlidesUrl,
+                    embedUrl: data.googleSlidesEmbedUrl,
+                    imageUrl: data.googleSlidesImageUrl,
+                    imageWidth: data.googleSlidesImageWidth,
+                    imageHeight: data.googleSlidesImageHeight,
+                    positionX: data.googleSlidesPositionX,
+                    positionY: data.googleSlidesPositionY,
+                };
+            }
+
             // Submit request
             const response = await webhookService.submitCertificate(request);
 
             if (response.success && 'certificateId' in response) {
-                setResult({ success: true, message: `Certificate generated successfully! ID: ${response.certificateId}` });
+                setResult({ success: true, message: `Certificate generated successfully! ID: ${response.certificateId} ` });
                 if (response.preview) {
                     setPreviewData(response.preview);
                 }
+
+                // Save to history
+                certificateStorage.add({
+                    recipientName: data.recipientName || 'Unknown',
+                    badge: data.badge || 'Certificate',
+                    date: data.date || new Date().toISOString(),
+                    description: data.description,
+                    deliveryChannels: data.deliveryChannels,
+                    templateType: data.templateType,
+                    status: 'success',
+                    certificateId: response.certificateId,
+                });
             } else {
                 setResult({ success: false, message: response.error || 'Failed to generate certificate' });
             }
@@ -133,327 +138,318 @@ const CertificateForm: React.FC = () => {
         }
     };
 
-    if (mode === 'bulk') {
-        return <BulkUpload />;
-    }
-
     return (
         <div className="max-w-3xl mx-auto">
-            {/* Dynamic Header with Stats */}
-            <div className="text-center mb-12 animate-fade-in">
-                <div className="inline-block mb-6 relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-primary-500 to-accent-500 rounded-2xl blur-xl opacity-50 animate-pulse-slow"></div>
-                    <div className="relative w-20 h-20 mx-auto rounded-2xl bg-gradient-to-br from-primary-500 to-accent-500 flex items-center justify-center shadow-2xl shadow-primary-300/50">
-                        <Sparkles className="w-10 h-10 text-white" />
-                    </div>
-                </div>
-                <h1 className="text-6xl font-bold text-gray-900 mb-3 tracking-tight">
-                    <span className="bg-gradient-to-r from-primary-600 via-accent-600 to-primary-600 bg-clip-text text-transparent animate-gradient">
-                        Certificate Generator
-                    </span>
-                </h1>
-                <p className="text-gray-600 text-lg mb-6">Create and deliver professional certificates effortlessly</p>
-
-                {/* Quick stats */}
-                <div className="flex items-center justify-center gap-6 text-sm">
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/60 backdrop-blur-sm border border-white shadow-sm">
-                        <Zap className="w-4 h-4 text-primary-600" />
-                        <span className="font-medium text-gray-700">Instant Delivery</span>
-                    </div>
-                    <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/60 backdrop-blur-sm border border-white shadow-sm">
-                        <Award className="w-4 h-4 text-accent-600" />
-                        <span className="font-medium text-gray-700">AI Powered</span>
-                    </div>
-                </div>
-            </div>
+            {/* Compact Header */}
+            <h1 className="text-3xl font-bold text-center mb-6 bg-gradient-to-r from-primary-600 to-accent-600 bg-clip-text text-transparent">
+                Certificate Generator
+            </h1>
 
             <div className="card animate-fade-in relative overflow-hidden">
                 {/* Decorative gradient corner */}
                 <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-primary-500/10 to-accent-500/10 rounded-bl-full"></div>
 
-                <form onSubmit={handleSubmit(onSubmit)} className="space-y-8 relative z-10">
-                    {/* Mode Selection */}
-                    <div>
-                        <label className="label-minimal">Generation Mode</label>
-                        <div className="flex gap-3">
-                            <label className="flex items-center gap-2 cursor-pointer group">
-                                <input
-                                    type="radio"
-                                    value="single"
-                                    {...register('mode')}
-                                    className="w-4 h-4 accent-black"
-                                />
-                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Single Certificate</span>
+                {/* Mode Selection - Tab Style - Always Visible */}
+                <div className="mb-5 border-b border-gray-200 relative z-10">
+                    <nav className="flex gap-8">
+                        <button
+                            type="button"
+                            onClick={() => setValue('mode', 'single')}
+                            className={`pb-4 px-1 relative font-medium transition-colors ${mode === 'single'
+                                ? 'text-primary-600'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <Award className="w-5 h-5" />
+                                <span>Single Certificate</span>
+                            </div>
+                            {mode === 'single' && (
+                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
+                            )}
+                        </button>
+
+                        <button
+                            type="button"
+                            onClick={() => setValue('mode', 'bulk')}
+                            className={`pb-4 px-1 relative font-medium transition-colors ${mode === 'bulk'
+                                ? 'text-primary-600'
+                                : 'text-gray-500 hover:text-gray-700'
+                                }`}
+                        >
+                            <div className="flex items-center gap-2">
+                                <Zap className="w-5 h-5" />
+                                <span>Bulk Generation</span>
+                            </div>
+                            {mode === 'bulk' && (
+                                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-600 rounded-full" />
+                            )}
+                        </button>
+                    </nav>
+                </div>
+
+                {/* Conditionally render Single or Bulk */}
+                {mode === 'bulk' ? (
+                    <BulkUpload />
+                ) : (
+                    <form onSubmit={handleSubmit(onSubmit)} className="space-y-5 relative z-10">
+                        {/* Template Type Selection */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Template Type
                             </label>
-                            <label className="flex items-center gap-2 cursor-pointer group">
-                                <input
-                                    type="radio"
-                                    value="bulk"
-                                    {...register('mode')}
-                                    className="w-4 h-4 accent-black"
+                            <div className="grid grid-cols-2 gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setValue('templateType', 'ai')}
+                                    className={`p-4 border-2 rounded-lg transition-all ${templateType === 'ai'
+                                        ? 'border-primary-600 bg-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                        }`}
+                                >
+                                    <div className="text-2xl mb-2">🤖</div>
+                                    <h3 className="font-semibold">AI Generated</h3>
+                                    <p className="text-sm text-gray-600 mt-1">Powered by Gemini 2.0</p>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => setValue('templateType', 'googleslides')}
+                                    className={`p-4 border-2 rounded-lg transition-all ${templateType === 'googleslides'
+                                        ? 'border-primary-600 bg-primary-50'
+                                        : 'border-gray-200 hover:border-gray-300'
+                                        }`}
+                                >
+                                    <div className="text-2xl mb-2">📊</div>
+                                    <h3 className="font-semibold">Google Slides</h3>
+                                    <p className="text-sm text-gray-600 mt-1">Use existing template</p>
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* AI Branding */}
+                        {templateType === 'ai' && (
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="label-minimal">
+                                        Brand Colors
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="#0ea5e9, #d946ef"
+                                        {...register('brandColors')}
+                                        className="input-field"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Google Slides Template */}
+                        {templateType === 'googleslides' && (
+                            <div className="animate-fade-in">
+                                <GoogleSlidesEditor
+                                    onUrlChange={(url, embedUrl, imageUrl, imageWidth, imageHeight, positionX, positionY) => {
+                                        setValue('googleSlidesUrl', url);
+                                        setValue('googleSlidesEmbedUrl', embedUrl);
+                                        setValue('googleSlidesImageUrl', imageUrl);
+                                        setValue('googleSlidesImageWidth', imageWidth);
+                                        setValue('googleSlidesImageHeight', imageHeight);
+                                        setValue('googleSlidesPositionX', positionX);
+                                        setValue('googleSlidesPositionY', positionY);
+                                    }}
+                                    initialUrl={watch('googleSlidesUrl')}
+                                    initialImageUrl={watch('googleSlidesImageUrl')}
+                                    initialImageWidth={watch('googleSlidesImageWidth')}
+                                    initialImageHeight={watch('googleSlidesImageHeight')}
+                                    initialPositionX={watch('googleSlidesPositionX')}
+                                    initialPositionY={watch('googleSlidesPositionY')}
                                 />
-                                <span className="text-sm font-medium text-gray-700 group-hover:text-gray-900">Bulk Generation</span>
-                            </label>
-                        </div>
-                    </div>
+                            </div>
+                        )}
 
-                    {/* Template Type */}
-                    <div>
-                        <label className="label-minimal">Template Type</label>
-                        <div className="grid grid-cols-2 gap-3">
-                            <button
-                                type="button"
-                                onClick={() => setValue('templateType', 'ai')}
-                                className={`option-card ${templateType === 'ai' ? 'option-card-selected' : 'option-card-default'}`}
-                            >
-                                <div className={`w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center ${templateType === 'ai'
-                                    ? 'bg-gradient-to-br from-primary-500 to-accent-500 shadow-lg shadow-primary-300/30'
-                                    : 'bg-gradient-to-br from-gray-100 to-gray-50'
-                                    }`}>
-                                    <Sparkles className={`w-7 h-7 ${templateType === 'ai' ? 'text-white' : 'text-gray-400'}`} />
-                                </div>
-                                <h3 className="font-semibold text-base mb-1">AI Generated</h3>
-                                <p className="text-sm text-gray-500">Let AI design your certificate</p>
-                            </button>
+                        <div className="divider" />
 
-                            <button
-                                type="button"
-                                onClick={() => setValue('templateType', 'custom')}
-                                className={`option-card ${templateType === 'custom' ? 'option-card-selected' : 'option-card-default'}`}
-                            >
-                                <div className={`w-14 h-14 mx-auto mb-4 rounded-2xl flex items-center justify-center ${templateType === 'custom'
-                                    ? 'bg-gradient-to-br from-primary-500 to-accent-500 shadow-lg shadow-primary-300/30'
-                                    : 'bg-gradient-to-br from-gray-100 to-gray-50'
-                                    }`}>
-                                    <FileUp className={`w-7 h-7 ${templateType === 'custom' ? 'text-white' : 'text-gray-400'}`} />
-                                </div>
-                                <h3 className="font-semibold text-base mb-1">Custom Template</h3>
-                                <p className="text-sm text-gray-500">Upload your own template</p>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Custom Template Upload */}
-                    {templateType === 'custom' && (
-                        <div className="animate-fade-in">
-                            <FileUpload
-                                accept=".png,.jpg,.jpeg,.pdf"
-                                onChange={(file) => setValue('templateFile', file as File)}
-                                value={templateFile}
-                                label="Upload Template"
-                                description="Drag and drop or click to browse"
-                            />
-                        </div>
-                    )}
-
-                    {/* AI Branding */}
-                    {templateType === 'ai' && (
-                        <div className="space-y-4">
+                        {/* Recipient Information */}
+                        <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="label-minimal">
-                                    Brand Colors
+                                    Recipient Name
                                 </label>
                                 <input
                                     type="text"
-                                    placeholder="#0ea5e9, #d946ef"
-                                    {...register('brandColors')}
+                                    {...register('recipientName', { required: true })}
+                                    className="input-field"
+                                    placeholder="John Doe"
+                                />
+                                {errors.recipientName && (
+                                    <p className="text-red-600 text-sm mt-1">This field is required</p>
+                                )}
+                            </div>
+
+                            <div>
+                                <label className="label-minimal">
+                                    Badge / Title
+                                </label>
+                                <input
+                                    type="text"
+                                    {...register('badge', { required: true })}
+                                    className="input-field"
+                                    placeholder="Excellence Award"
+                                />
+                                {errors.badge && (
+                                    <p className="text-red-600 text-sm mt-1">This field is required</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="label-minimal">Date</label>
+                                <input
+                                    type="date"
+                                    {...register('date', { required: true })}
                                     className="input-field"
                                 />
                             </div>
+
                             <div>
-                                <FileUpload
-                                    accept=".png,.jpg,.jpeg"
-                                    onChange={(file) => setValue('brandLogo', file as File)}
-                                    value={watch('brandLogo')}
-                                    label="Brand Logo"
-                                    description="Drag and drop your logo"
+                                <label className="label-minimal">Issuer</label>
+                                <input
+                                    type="text"
+                                    {...register('issuer')}
+                                    className="input-field"
+                                    placeholder="ABC Organization"
                                 />
                             </div>
                         </div>
-                    )}
 
-                    <div className="divider" />
+                        <div>
+                            <label className="label-minimal">Description</label>
+                            <textarea
+                                {...register('description')}
+                                className="input-field"
+                                rows={3}
+                                placeholder="For outstanding achievement in..."
+                            />
+                        </div>
 
-                    {/* Recipient Information */}
-                    <div className="grid grid-cols-2 gap-4">
+                        <hr className="my-6" />
+
+                        {/* Delivery Settings */}
                         <div>
                             <label className="label-minimal">
-                                Recipient Name
+                                Delivery Channels
                             </label>
-                            <input
-                                type="text"
-                                {...register('recipientName', { required: true })}
-                                className="input-field"
-                                placeholder="John Doe"
-                            />
-                            {errors.recipientName && (
-                                <p className="text-red-600 text-sm mt-1">This field is required</p>
-                            )}
+                            <div className="flex gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => toggleDeliveryChannel('gmail')}
+                                    className={`toggle-button ${deliveryChannels.includes('gmail') ? 'toggle-button-active' : 'toggle-button-inactive'}`}
+                                >
+                                    <Mail className="w-4 h-4" />
+                                    <span>Email</span>
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => toggleDeliveryChannel('whatsapp')}
+                                    className={`toggle-button ${deliveryChannels.includes('whatsapp') ? 'toggle-button-active' : 'toggle-button-inactive'}`}
+                                >
+                                    <MessageCircle className="w-4 h-4" />
+                                    <span>WhatsApp</span>
+                                </button>
+                            </div>
                         </div>
 
-                        <div>
-                            <label className="label-minimal">
-                                Badge / Title
-                            </label>
-                            <input
-                                type="text"
-                                {...register('badge', { required: true })}
-                                className="input-field"
-                                placeholder="Excellence Award"
-                            />
-                            {errors.badge && (
-                                <p className="text-red-600 text-sm mt-1">This field is required</p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label-minimal">Date</label>
-                            <input
-                                type="date"
-                                {...register('date', { required: true })}
-                                className="input-field"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="label-minimal">Issuer</label>
-                            <input
-                                type="text"
-                                {...register('issuer')}
-                                className="input-field"
-                                placeholder="ABC Organization"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="label-minimal">Description</label>
-                        <textarea
-                            {...register('description')}
-                            className="input-field"
-                            rows={3}
-                            placeholder="For outstanding achievement in..."
-                        />
-                    </div>
-
-                    <hr className="my-6" />
-
-                    {/* Delivery Settings */}
-                    <div>
-                        <label className="label-minimal">
-                            Delivery Channels
-                        </label>
-                        <div className="flex gap-3">
-                            <button
-                                type="button"
-                                onClick={() => toggleDeliveryChannel('gmail')}
-                                className={`toggle-button ${deliveryChannels.includes('gmail') ? 'toggle-button-active' : 'toggle-button-inactive'}`}
-                            >
-                                <Mail className="w-4 h-4" />
-                                <span>Email</span>
-                            </button>
-
-                            <button
-                                type="button"
-                                onClick={() => toggleDeliveryChannel('whatsapp')}
-                                className={`toggle-button ${deliveryChannels.includes('whatsapp') ? 'toggle-button-active' : 'toggle-button-inactive'}`}
-                            >
-                                <MessageCircle className="w-4 h-4" />
-                                <span>WhatsApp</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {deliveryChannels.includes('gmail') && (
-                        <div>
-                            <label className="label-minimal">
-                                Recipient Email
-                            </label>
-                            <input
-                                type="email"
-                                {...register('recipientEmail', { required: deliveryChannels.includes('gmail') })}
-                                className="input-field"
-                                placeholder="recipient@example.com"
-                            />
-                        </div>
-                    )}
-
-                    {deliveryChannels.includes('whatsapp') && (
-                        <div>
-                            <label className="label-minimal">
-                                WhatsApp Number
-                            </label>
-                            <input
-                                type="tel"
-                                {...register('recipientWhatsApp', {
-                                    required: deliveryChannels.includes('whatsapp'),
-                                })}
-                                className="input-field"
-                                placeholder="+1234567890"
-                            />
-                        </div>
-                    )}
-
-                    {/* Sender Information */}
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="label-minimal">
-                                Sender Name
-                            </label>
-                            <input
-                                type="text"
-                                {...register('senderName', { required: true })}
-                                className="input-field"
-                                placeholder="ABC Organization"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="label-minimal">
-                                Sender Email
-                            </label>
-                            <input
-                                type="email"
-                                {...register('senderEmail')}
-                                className="input-field"
-                                placeholder="sender@abc.org"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Submit Button */}
-                    <button
-                        type="submit"
-                        disabled={isSubmitting}
-                        className="btn-primary w-full flex items-center justify-center gap-2"
-                    >
-                        {isSubmitting ? (
-                            <>
-                                <Loader2 className="w-5 h-5 animate-spin" />
-                                <span>Generating Certificate...</span>
-                            </>
-                        ) : (
-                            <>
-                                <Send className="w-5 h-5" />
-                                <span>Generate & Send Certificate</span>
-                            </>
+                        {deliveryChannels.includes('gmail') && (
+                            <div>
+                                <label className="label-minimal">
+                                    Recipient Email
+                                </label>
+                                <input
+                                    type="email"
+                                    {...register('recipientEmail', { required: deliveryChannels.includes('gmail') })}
+                                    className="input-field"
+                                    placeholder="recipient@example.com"
+                                />
+                            </div>
                         )}
-                    </button>
 
-                    {/* Result Message */}
-                    {result && (
-                        <div
-                            className={`p-4 rounded-lg text-sm animate-fade-in ${result.success
-                                ? 'bg-green-50 text-green-900 border border-green-200'
-                                : 'bg-red-50 text-red-900 border border-red-200'
-                                }`}
-                        >
-                            {result.message}
+                        {deliveryChannels.includes('whatsapp') && (
+                            <div>
+                                <label className="label-minimal">
+                                    WhatsApp Number
+                                </label>
+                                <input
+                                    type="tel"
+                                    {...register('recipientWhatsApp', {
+                                        required: deliveryChannels.includes('whatsapp'),
+                                    })}
+                                    className="input-field"
+                                    placeholder="+1234567890"
+                                />
+                            </div>
+                        )}
+
+                        {/* Sender Information */}
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="label-minimal">
+                                    Sender Name
+                                </label>
+                                <input
+                                    type="text"
+                                    {...register('senderName', { required: true })}
+                                    className="input-field"
+                                    placeholder="ABC Organization"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="label-minimal">
+                                    Sender Email
+                                </label>
+                                <input
+                                    type="email"
+                                    {...register('senderEmail')}
+                                    className="input-field"
+                                    placeholder="sender@abc.org"
+                                />
+                            </div>
                         </div>
-                    )}
-                </form>
+
+                        {/* Submit Button */}
+                        <button
+                            type="submit"
+                            disabled={isSubmitting}
+                            className="btn-primary w-full flex items-center justify-center gap-2"
+                        >
+                            {isSubmitting ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    <span>Generating Certificate...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Send className="w-5 h-5" />
+                                    <span>Generate Certificate</span>
+                                </>
+                            )}
+                        </button>
+
+                        {/* Result Message */}
+                        {result && (
+                            <div
+                                className={`p - 4 rounded - lg text - sm animate - fade -in ${result.success
+                                    ? 'bg-green-50 text-green-900 border border-green-200'
+                                    : 'bg-red-50 text-red-900 border border-red-200'
+                                    } `}
+                            >
+                                {result.message}
+                            </div>
+                        )}
+                    </form>
+                )}
             </div>
 
             {/* Preview */}
